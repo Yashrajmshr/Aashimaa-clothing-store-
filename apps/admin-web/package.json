@@ -1,0 +1,11 @@
+{
+  "name": "aashima-erp-admin-web",
+  "version": "2.4.0",
+  "private": true,
+  "description": "AASHIMA Enterprise Atelier & Dry-Clean ERP - Admin Web Portal",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}

@@ -1,0 +1,44 @@
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# Databases & Backups
+*.db
+*.db.gz
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+infrastructure/backups/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Node / Frontend
+node_modules/
+.vite/
+
+# Runtime Media & Generated Files
+backend/media/
+*.log
+
+# Raw Design Export Archives
+stitch_extracted/
+*.zip
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

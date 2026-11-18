@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AASHIMA | Live Garment Order Tracking & Customer Portal</title>
+
+  <!-- Google Fonts: Playfair Display & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet"/>
+  <!-- Material Symbols Outlined -->
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+
+  <!-- Tailwind CSS with exact Stitch Regal Atelier Tokens -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#3d0017",
+            "on-primary": "#ffffff",
+            "primary-container": "#5b132b",
+            "on-primary-container": "#db7991",
+            "secondary": "#8e495d",
+            "on-secondary": "#ffffff",
+            "secondary-container": "#ffa9bf",
+            "on-secondary-container": "#7b3a4e",
+            "tertiary": "#261800",
+            "on-tertiary": "#ffffff",
+            "tertiary-container": "#402c00",
+            "on-tertiary-container": "#ba9142",
+            "tertiary-fixed": "#ffdea7",
+            "surface": "#fff8f8",
+            "surface-container-lowest": "#ffffff",
+            "surface-container-low": "#fdf0f3",
+            "surface-container": "#f8ebed",
+            "surface-container-high": "#f2e5e8",
+            "on-surface": "#201a1c",
+            "on-surface-variant": "#544245",
+            "outline": "#867275",
+            "outline-variant": "#d9c1c4",
+            "error": "#ba1a1a",
+            "success": "#1E7B4D"
+          },
+          fontFamily: {
+            "serif": ["Playfair Display", "serif"],
+            "sans": ["Plus Jakarta Sans", "sans-serif"]
+          }
+        }
+      }
+    };
+  </script>
+</head>
+<body class="bg-surface text-on-surface antialiased min-h-screen flex flex-col justify-between selection:bg-primary-container selection:text-white">
+
+  <!-- Luxury Atelier Brand Navigation -->
+  <header class="sticky top-0 z-30 bg-surface-container-lowest/95 backdrop-blur-md border-b border-outline-variant/40 px-4 lg:px-12 py-3.5 flex items-center justify-between shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-primary-container text-tertiary-fixed flex items-center justify-center shadow-md">
+        <span class="material-symbols-outlined text-[24px]">hotel_class</span>
+      </div>
+      <div>
+        <h1 class="font-serif text-xl font-bold text-primary tracking-wide leading-tight">AASHIMA</h1>
+        <p class="text-[10px] text-secondary font-semibold uppercase tracking-widest leading-none">Women's World • Stitchers 'N' Drapers</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex flex-col text-right text-xs">
+        <span class="font-bold text-on-surface">581, Turab Nagar</span>
+        <span class="text-on-surface-variant text-[11px]">Ghaziabad Flagship Counter</span>
+      </div>
+
+      <a href="tel:+919810244321" class="px-3.5 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-primary text-xs font-bold flex items-center gap-1.5 transition-colors border border-outline-variant/30 shadow-sm">
+        <span class="material-symbols-outlined text-[16px]">call</span>
+        <span>+91 98102 44321</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Main View Container -->
+  <main class="flex-1 max-w-2xl mx-auto w-full p-4 sm:p-6" id="customer-main">
+    <!-- Active customer view injected by main.js -->
+  </main>
+
+  <!-- Luxury Atelier Footer -->
+  <footer class="bg-surface-container-low border-t border-outline-variant/40 px-4 py-6 text-center text-xs text-on-surface-variant">
+    <div class="flex flex-wrap items-center justify-center gap-4 mb-3 text-xs font-semibold text-primary">
+      <a href="/" class="hover:underline">Live Order Tracking</a>
+      <span class="text-outline-variant">•</span>
+      <a href="tel:+919810244321" class="hover:underline">Atelier Helpline</a>
+      <span class="text-outline-variant">•</span>
+      <a href="/admin" class="hover:underline text-outline hover:text-primary">Staff Sign In</a>
+    </div>
+    <p class="font-serif text-sm font-bold text-primary">AASHIMA Atelier & Bespoke Tailoring</p>
+    <p class="mt-1">581, Turab Nagar, Ghaziabad, Uttar Pradesh, 201001, India | GSTIN: 09AABCA1234F1Z8</p>
+    <p class="text-[11px] text-outline mt-2">© 2026 AASHIMA. All Rights Reserved. Handcrafted Couture & Fabric Care.</p>
+  </footer>
+
+  <!-- Application Logic -->
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
