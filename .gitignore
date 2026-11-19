@@ -10,7 +10,6 @@
 *.sqlite3
 *.db-journal
 *.db-wal
-infrastructure/backups/
 
 # Python
 __pycache__/
@@ -28,10 +27,13 @@ build/
 # Node / Frontend
 node_modules/
 .vite/
+apps/*/dist/
 
 # Runtime Media & Generated Files
 backend/media/
 *.log
+playwright-report/
+test-results/
 
 # Raw Design Export Archives
 stitch_extracted/
@@ -42,3 +44,10 @@ stitch_extracted/
 .idea/
 .DS_Store
 Thumbs.db
+*.db-shm
+
+# Playwright
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

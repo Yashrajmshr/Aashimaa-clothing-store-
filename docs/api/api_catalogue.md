@@ -97,10 +97,10 @@ Customers authenticate via a two-step phone OTP handshake:
 | `POST` | `/api/v1/deliveries/{id}/updates` | Delivery, Owner | Add location update (e.g. In Transit, Out for Delivery) |
 | `PUT` | `/api/v1/deliveries/{id}` | Delivery, Owner | Complete delivery and record POD |
 
-### Group 9: Public Customer Tracking
+### Group 9: Customer-Authenticated Tracking
 | Method | Endpoint | Access Level | Description |
 |---|---|---|---|
-| `GET` | `/api/v1/public/track` | Public | Live 5-stage tracking with visual proof photos & dues |
+| `GET` | `/api/v1/public/track` | Verified Customer | Live tracking for the authenticated customer's own orders. Booking number, phone, or QR token alone is not authorization. |
 
 ---
 

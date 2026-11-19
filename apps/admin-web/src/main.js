@@ -18,29 +18,123 @@ class AdminApp {
     async init() {
         window.adminApp = this;
 
-        // Auto authenticate as Owner in admin dashboard if no token
-        if (!this.token) {
-            await this.autoLogin();
-        }
-
         this.bindEvents();
+        this.updateOperatorBadge();
+
+        if (!this.token) {
+            this.renderLogin();
+            return;
+        }
         await this.switchTab('overview');
     }
 
-    async autoLogin() {
-        try {
-            const res = await fetch(`${API_BASE}/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username_or_phone: 'owner', password: 'Password@123' })
-            });
-            if (res.ok) {
-                const data = await res.json();
-                this.token = data.access_token;
-                localStorage.setItem('aashima_access_token', data.access_token);
-            }
-        } catch (e) {
-            console.warn('Auto-login bypassed or offline:', e);
+    updateOperatorBadge() {
+        const badgeContainer = document.getElementById('operator-badge-container');
+        if (!badgeContainer) return;
+
+        if (this.token) {
+            let profile = null;
+            try {
+                profile = JSON.parse(localStorage.getItem('aashima_user_profile') || '{}');
+            } catch (e) {}
+            const displayName = profile?.full_name || 'AASHIMA Staff';
+            const role = profile?.role || 'Staff';
+            badgeContainer.innerHTML = `
+                <div class="flex flex-col overflow-hidden mr-2">
+                    <span class="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">${role}</span>
+                    <span id="operator-name" class="text-xs text-primary font-bold truncate" title="${displayName}">${displayName}</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <button onclick="window.location.reload()" title="Sync Live Data" class="w-7 h-7 rounded-full bg-surface-container-lowest flex items-center justify-center text-primary shadow-sm hover:scale-105 active:scale-95 transition-transform">
+                        <span class="material-symbols-outlined text-[15px]">sync</span>
+                    </button>
+                    <button onclick="window.adminApp.logout()" title="Sign Out" class="w-7 h-7 rounded-full bg-surface-container-lowest flex items-center justify-center text-error shadow-sm hover:scale-105 active:scale-95 transition-transform">
+                        <span class="material-symbols-outlined text-[15px]">logout</span>
+                    </button>
+                </div>
+            `;
+        } else {
+            badgeContainer.innerHTML = `
+                <div class="flex flex-col overflow-hidden mr-2">
+                    <span class="text-[10px] text-error font-bold uppercase tracking-wider">Session Inactive</span>
+                    <span id="operator-name" class="text-xs text-on-surface-variant font-semibold">Please Sign In</span>
+                </div>
+                <button onclick="window.adminApp.renderLogin()" title="Sign In" class="px-2.5 py-1 rounded-md bg-primary-container text-white text-[11px] font-bold shadow-sm hover:opacity-90">
+                    Sign In
+                </button>
+            `;
+        }
+    }
+
+    logout() {
+        this.token = null;
+        localStorage.removeItem('aashima_access_token');
+        localStorage.removeItem('aashima_user_profile');
+        this.updateOperatorBadge();
+        this.renderLogin('You have been signed out successfully.');
+    }
+
+    renderLogin(message = '') {
+        const container = document.getElementById('admin-content');
+        if (!container) return;
+        this.updateOperatorBadge();
+
+        container.innerHTML = `
+            <div class="max-w-md mx-auto mt-8 p-8 rounded-2xl bg-surface-container-lowest border border-outline-variant/40 shadow-lg">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-12 h-12 rounded-xl bg-primary-container text-tertiary-fixed flex items-center justify-center shadow-md">
+                        <span class="material-symbols-outlined text-2xl">admin_panel_settings</span>
+                    </div>
+                    <div>
+                        <h1 class="font-serif text-2xl font-bold text-primary leading-tight">Staff Sign In</h1>
+                        <p class="text-xs text-on-surface-variant">AASHIMA Atelier & Dry-Clean ERP</p>
+                    </div>
+                </div>
+                <p class="text-xs text-on-surface-variant leading-relaxed">Enter your staff username or registered 10-digit mobile number and password to access the counter terminal.</p>
+                ${message ? `<div role="alert" class="mt-4 p-3 rounded-lg bg-error-container text-on-error-container text-xs flex items-center gap-2"><span class="material-symbols-outlined text-sm">info</span><span>${message}</span></div>` : ''}
+                <form id="admin-login-form" class="mt-5 space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-on-surface mb-1">Username or mobile</label>
+                        <input id="admin-login-identity" autocomplete="username" required value="owner" class="w-full p-3 rounded-lg border border-outline-variant text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-on-surface mb-1">Password</label>
+                        <input id="admin-login-password" type="password" autocomplete="current-password" required value="Password@123" class="w-full p-3 rounded-lg border border-outline-variant text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none" />
+                    </div>
+                    <button class="w-full min-h-11 rounded-lg bg-primary-container hover:bg-primary-container/90 text-white font-bold text-sm shadow-md active:scale-98 transition-all flex items-center justify-center gap-2" type="submit">
+                        <span class="material-symbols-outlined text-[18px]">lock_open</span>
+                        <span>Sign In to Atelier Counter</span>
+                    </button>
+                </form>
+            </div>`;
+
+        const form = document.getElementById('admin-login-form');
+        if (form) {
+            form.onsubmit = async (event) => {
+                event.preventDefault();
+                const button = event.currentTarget.querySelector('button[type="submit"]');
+                button.disabled = true;
+                button.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span><span>Authenticating...</span>`;
+                try {
+                    const response = await fetch(`${API_BASE}/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            username_or_phone: document.getElementById('admin-login-identity').value.trim(),
+                            password: document.getElementById('admin-login-password').value
+                        })
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(data.detail || 'Sign in failed. Check your credentials.');
+                    this.token = data.access_token;
+                    localStorage.setItem('aashima_access_token', data.access_token);
+                    localStorage.setItem('aashima_user_profile', JSON.stringify({ user_id: data.user_id, full_name: data.full_name, role: data.role }));
+                    this.updateOperatorBadge();
+                    await this.switchTab(this.currentTab && this.currentTab !== 'login' ? this.currentTab : 'overview');
+                } catch (error) {
+                    this.renderLogin(error.message);
+                }
+            };
         }
     }
 
@@ -53,6 +147,16 @@ class AdminApp {
             headers['Authorization'] = `Bearer ${this.token}`;
         }
         const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+        if (res.status === 401) {
+            this.token = null;
+            localStorage.removeItem('aashima_access_token');
+            localStorage.removeItem('aashima_user_profile');
+            this.updateOperatorBadge();
+            this.renderLogin('Your session has expired. Please sign in again.');
+            const authErr = new Error('Session expired. Please sign in again.');
+            authErr.isAuthExpired = true;
+            throw authErr;
+        }
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.detail || `HTTP Error ${res.status}`);
@@ -73,6 +177,12 @@ class AdminApp {
     async switchTab(tabName) {
         this.currentTab = tabName;
         const container = document.getElementById('admin-content');
+        if (!container) return;
+
+        if (!this.token) {
+            this.renderLogin();
+            return;
+        }
 
         // Update nav tabs styling
         document.querySelectorAll('.nav-tab').forEach(btn => {
@@ -119,11 +229,18 @@ class AdminApp {
                     await this.renderOverview(container);
             }
         } catch (err) {
+            if (err.isAuthExpired || !this.token) {
+                return;
+            }
             container.innerHTML = `
-                <div class="p-8 rounded-xl bg-surface-container-lowest border border-error/30 text-center text-error">
-                    <span class="material-symbols-outlined text-4xl mb-2">error</span>
-                    <h3 class="font-bold">Error loading module</h3>
+                <div class="max-w-lg mx-auto mt-8 p-8 rounded-xl bg-surface-container-lowest border border-error/30 text-center text-error shadow-sm">
+                    <span class="material-symbols-outlined text-4xl mb-2 text-error">error</span>
+                    <h3 class="font-bold text-base">Error loading module</h3>
                     <p class="text-xs text-on-surface-variant mt-1">${err.message}</p>
+                    <div class="mt-5 flex gap-2 justify-center">
+                        <button onclick="window.adminApp.switchTab('${tabName}')" class="px-4 py-2 rounded-lg bg-primary-container text-white text-xs font-semibold hover:opacity-90">Retry</button>
+                        <button onclick="window.adminApp.renderLogin()" class="px-4 py-2 rounded-lg bg-surface-container text-on-surface text-xs font-semibold">Sign In Again</button>
+                    </div>
                 </div>
             `;
         }
@@ -847,6 +964,11 @@ class AdminApp {
     // NEW COUNTER INTAKE ORDER MODAL
     // ==========================================
     async openNewBookingModal() {
+        if (!this.token) {
+            this.renderLogin('Please sign in to access counter booking.');
+            return;
+        }
+
         const modal = document.getElementById('modal-new-booking');
         const modalBody = document.getElementById('modal-new-booking-body');
         if (!modal || !modalBody) return;

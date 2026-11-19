@@ -1,6 +1,5 @@
 import os
 import json
-import urllib.parse
 from datetime import datetime
 from typing import Optional, Dict, Any
 import requests
@@ -35,9 +34,9 @@ class NotificationService:
             res_data = res.json()
             if res.status_code == 200 and res_data.get("return") is True:
                 return {"success": True, "provider": "Fast2SMS", "response": res_data}
-            return {"success": False, "provider": "Fast2SMS", "error": res_data.get("message", "Fast2SMS error")}
-        except Exception as e:
-            return {"success": False, "provider": "Fast2SMS", "error": str(e)}
+            return {"success": False, "provider": "Fast2SMS", "error": "Provider rejected the message"}
+        except Exception:
+            return {"success": False, "provider": "Fast2SMS", "error": "Provider request failed"}
 
     @staticmethod
     def send_real_sms_twilio(phone: str, message: str) -> Dict[str, Any]:
@@ -59,23 +58,9 @@ class NotificationService:
             res = requests.post(url, auth=(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN), data=data, timeout=8)
             if res.status_code in [200, 201]:
                 return {"success": True, "provider": "Twilio", "sid": res.json().get("sid")}
-            return {"success": False, "provider": "Twilio", "error": res.text}
-        except Exception as e:
-            return {"success": False, "provider": "Twilio", "error": str(e)}
-
-    @staticmethod
-    def generate_whatsapp_link(phone: str, otp: str, booking_number: Optional[str] = None) -> str:
-        """Generate direct WhatsApp click-to-receive link for seamless zero-friction verification."""
-        clean_number = "".join(filter(str.isdigit, phone))[-10:]
-        intake_ref = f" for booking #{booking_number}" if booking_number else ""
-        msg = (
-            f"Namaste from AASHIMA Atelier (581, Turab Nagar, Ghaziabad).\n\n"
-            f"Your login & order tracking verification code{intake_ref} is:\n"
-            f"🔑 *{otp}*\n\n"
-            f"Valid for 10 minutes. For assistance call +91 98102 44321."
-        )
-        encoded_msg = urllib.parse.quote(msg)
-        return f"https://api.whatsapp.com/send?phone=91{clean_number}&text={encoded_msg}"
+            return {"success": False, "provider": "Twilio", "error": "Provider rejected the message"}
+        except Exception:
+            return {"success": False, "provider": "Twilio", "error": "Provider request failed"}
 
     @classmethod
     def send_otp(
@@ -90,37 +75,20 @@ class NotificationService:
         """
         Primary OTP Dispatcher:
         1. Attempts live SMS dispatch via configured provider (Fast2SMS / Twilio).
-        2. Generates WhatsApp direct chat verification URL.
-        3. Prints high-visibility real-time alert in server terminal.
-        4. Logs into notification_logs table.
+        2. Records delivery outcome without logging the verification secret.
         """
         clean_phone = "".join(filter(str.isdigit, phone))[-10:]
         sms_text = f"AASHIMA: Your order tracking verification code is {otp}. Valid for 10 mins. 581 Turab Nagar, Ghaziabad."
         
         # 1. Attempt Live Network Carrier SMS Dispatch
         sms_result = {"success": False, "provider": "None"}
-        if settings.FAST2SMS_API_KEY or (settings.SMS_API_KEY and settings.NOTIFICATION_PROVIDER == "fast2sms"):
+        provider = settings.NOTIFICATION_PROVIDER.strip().lower()
+        if provider == "fast2sms":
             sms_result = cls.send_real_sms_fast2sms(clean_phone, otp)
-        elif settings.TWILIO_ACCOUNT_SID:
+        elif provider == "twilio":
             sms_result = cls.send_real_sms_twilio(clean_phone, sms_text)
 
-        # 2. WhatsApp Direct Verification Link
-        wa_link = cls.generate_whatsapp_link(clean_phone, otp, booking_number)
-
-        # 3. Terminal Realtime Broadcast
-        delivery_mode = "Live SMS (Fast2SMS/Twilio)" if sms_result.get("success") else "Console & WhatsApp Gateway"
-        print("\n" + "=" * 65)
-        print(" [OTP DISPATCH] AASHIMA ATELIER SECURE VERIFICATION CODE")
-        print(f" Recipient Phone : +91 {clean_phone}")
-        print(f" 6-Digit OTP     : >>> {otp} <<<")
-        print(f" Booking Ref     : #{booking_number or 'Atelier-Tracking'}")
-        print(f" Delivery Mode   : {delivery_mode}")
-        if sms_result.get("error"):
-            print(f" SMS Provider Note: {sms_result['error']}")
-        print(f" Direct WhatsApp : {wa_link}")
-        print("=" * 65 + "\n")
-
-        # 4. Record in database NotificationLog
+        # Record in database without including the OTP in message content.
         try:
             log = NotificationLog(
                 recipient_phone=clean_phone,
@@ -129,7 +97,7 @@ class NotificationService:
                 event_type="CUSTOMER_OTP_VERIFICATION",
                 channel="SMS/WhatsApp",
                 provider=sms_result.get("provider", "Direct Gateway"),
-                message_content=sms_text,
+                message_content="Customer OTP verification message",
                 status="Delivered" if sms_result.get("success") else "Dispatched",
                 error_message=sms_result.get("error"),
                 delivered_at=datetime.utcnow()
@@ -138,13 +106,13 @@ class NotificationService:
             db.commit()
         except Exception as e:
             db.rollback()
-            print(f"[NotificationLog Error]: {e}")
+            # Notification logging must not leak provider response bodies or secrets.
+            pass
 
         return {
             "success": True,
             "sms_delivered": sms_result.get("success", False),
             "phone_masked": f"******{clean_phone[-4:]}",
-            "whatsapp_url": wa_link,
             "message": f"Verification code dispatched to +91 ******{clean_phone[-4:]}"
         }
 
@@ -176,9 +144,10 @@ class NotificationService:
         clean_phone = "".join(filter(str.isdigit, recipient_phone))[-10:]
         
         # Live SMS dispatch
-        if settings.FAST2SMS_API_KEY or settings.SMS_API_KEY:
+        provider = settings.NOTIFICATION_PROVIDER.strip().lower()
+        if provider == "fast2sms":
             NotificationService.send_real_sms_fast2sms(clean_phone, body)
-        elif settings.TWILIO_ACCOUNT_SID:
+        elif provider == "twilio":
             NotificationService.send_real_sms_twilio(clean_phone, body)
 
         log = NotificationLog(

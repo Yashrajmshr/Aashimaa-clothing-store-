@@ -3,12 +3,13 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
-from backend.app.api.deps import get_current_user
+from backend.app.api.deps import get_current_user, require_roles
 from backend.app.models.service import Service, ServicePricing, TailoringMeasurementTemplate
 from backend.app.models.booking import GarmentMeasurement, Garment, Booking
 from backend.app.models.customer import Customer
 from backend.app.models.auth import User
 from backend.app.schemas.service import ServiceResponse, MeasurementTemplateResponse
+from backend.app.core.business_config import UserRole
 
 router = APIRouter(prefix="/services", tags=["Services & Measurement Templates"])
 
@@ -39,7 +40,7 @@ def list_measurement_templates(
         query = query.filter(TailoringMeasurementTemplate.silhouette_icon.ilike(gender.strip()))
     return query.order_by(TailoringMeasurementTemplate.silhouette_icon.asc(), TailoringMeasurementTemplate.display_title.asc()).all()
 
-@router.get("/measurements/records")
+@router.get("/measurements/records", dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER, UserRole.ACCOUNTANT]))])
 def list_recorded_measurements(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)

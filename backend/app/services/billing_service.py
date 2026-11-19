@@ -39,9 +39,14 @@ def create_invoice_for_booking(
     extra_charges: Decimal = Decimal("0.00"),
     user_id: Optional[int] = None
 ) -> Invoice:
-    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    booking = db.query(Booking).filter(Booking.id == booking_id, Booking.is_deleted == False).with_for_update().first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
+
+    if invoice_type not in {"GST", "Non-GST"}:
+        raise HTTPException(status_code=422, detail="Invoice type must be GST or Non-GST")
+    if discount_amount < Decimal("0.00") or extra_charges < Decimal("0.00"):
+        raise HTTPException(status_code=422, detail="Discount and extra charges must be zero or greater")
 
     existing_invoice = db.query(Invoice).filter(Invoice.booking_id == booking_id).first()
     if existing_invoice:
@@ -92,8 +97,28 @@ def create_invoice_for_booking(
 
     total_tax = total_cgst + total_sgst
     grand_total = round_currency(subtotal - discount_amount + extra_charges + total_tax)
+    if grand_total < booking.advance_paid:
+        raise HTTPException(status_code=409, detail="Invoice total cannot be less than payments already collected")
     paid = booking.advance_paid
     balance = round_currency(grand_total - paid)
+
+    old_balance = booking.balance_due
+    old_net_amount = booking.net_amount
+    booking.discount_amount = discount_amount
+    booking.tax_amount = total_tax
+    booking.net_amount = grand_total
+    booking.balance_due = balance
+    booking.payment_status = "Paid" if balance == 0 else ("Partial" if paid > 0 else "Unpaid")
+    customer = db.query(Customer).filter(Customer.id == booking.customer_id).first()
+    if customer:
+        customer.outstanding_dues = max(
+            Decimal("0.00"),
+            round_currency(customer.outstanding_dues - old_balance + balance)
+        )
+        customer.lifetime_spend = max(
+            Decimal("0.00"),
+            round_currency(customer.lifetime_spend + grand_total - old_net_amount)
+        )
 
     invoice = Invoice(
         invoice_number=invoice_num,
@@ -146,17 +171,53 @@ def record_payment(
     notes: Optional[str] = None,
     user_id: Optional[int] = None
 ) -> Tuple[Payment, PaymentReceipt]:
-    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update().first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
+    transaction_id = transaction_id.strip() if transaction_id and transaction_id.strip() else None
+    if transaction_id:
+        existing_payment = db.query(Payment).filter(
+            Payment.transaction_id == transaction_id,
+            Payment.is_deleted == False
+        ).first()
+        if existing_payment:
+            same_request = (
+                existing_payment.booking_id == booking.id
+                and existing_payment.amount == amount
+                and existing_payment.payment_type == payment_type
+                and existing_payment.payment_mode == payment_mode
+            )
+            if not same_request:
+                raise HTTPException(status_code=409, detail="Transaction reference has already been used")
+            if not existing_payment.receipt:
+                raise HTTPException(status_code=409, detail="Existing transaction is missing its receipt")
+            return existing_payment, existing_payment.receipt
+
     customer = db.query(Customer).filter(Customer.id == booking.customer_id).first()
+
+    if amount <= Decimal("0.00"):
+        raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
+
+    if payment_type == "Refund":
+        refundable = booking.advance_paid
+        if amount > refundable:
+            raise HTTPException(status_code=400, detail="Refund cannot exceed the amount currently paid")
+    elif amount > booking.balance_due:
+        raise HTTPException(status_code=400, detail="Payment cannot exceed the outstanding balance")
 
     pay_ref = generate_payment_reference(db)
     rec_num = generate_receipt_number(db)
 
-    # Add to advance/paid
-    booking.advance_paid = round_currency(booking.advance_paid + amount)
+    # Collections increase paid balance; refunds reverse it as a compensating ledger entry.
+    if payment_type == "Refund":
+        booking.advance_paid = round_currency(booking.advance_paid - amount)
+        if customer:
+            customer.outstanding_dues = round_currency(customer.outstanding_dues + amount)
+    else:
+        booking.advance_paid = round_currency(booking.advance_paid + amount)
+        if customer:
+            customer.outstanding_dues = max(Decimal("0.00"), round_currency(customer.outstanding_dues - amount))
     booking.balance_due = round_currency(booking.net_amount - booking.advance_paid)
 
     if booking.balance_due <= Decimal("0.00"):
@@ -164,10 +225,6 @@ def record_payment(
         booking.balance_due = Decimal("0.00")
     else:
         booking.payment_status = "Partial"
-
-    # Update customer lifetime stats
-    if customer:
-        customer.outstanding_dues = max(Decimal("0.00"), round_currency(customer.outstanding_dues - amount))
 
     # Create Payment record
     payment = Payment(
@@ -199,6 +256,11 @@ def record_payment(
         invoice.paid_amount = booking.advance_paid
         invoice.outstanding_balance = booking.balance_due
         receipt.invoice_id = invoice.id
+        customer = invoice.customer or customer
+        if customer:
+            invoice_filename = f"{invoice.invoice_number}.pdf"
+            invoice_path = os.path.join(settings.INVOICE_DIR, invoice_filename)
+            generate_invoice_pdf(invoice, customer, booking, invoice_path)
 
     db.commit()
     db.refresh(payment)
@@ -276,6 +338,10 @@ def generate_invoice_pdf(invoice: Invoice, customer: Customer, booking: Booking,
         ])
 
     table_data.append(["", "", "", "", "", "Subtotal:", "", f"₹ {invoice.subtotal_amount:.2f}"])
+    if invoice.discount_amount > 0:
+        table_data.append(["", "", "", "", "", "Discount:", "", f"- ₹ {invoice.discount_amount:.2f}"])
+    if invoice.extra_charges > 0:
+        table_data.append(["", "", "", "", "", "Extra Charges:", "", f"₹ {invoice.extra_charges:.2f}"])
     if invoice.invoice_type == "GST":
         table_data.append(["", "", "", "", "", "CGST:", "", f"₹ {invoice.cgst_amount:.2f}"])
         table_data.append(["", "", "", "", "", "SGST:", "", f"₹ {invoice.sgst_amount:.2f}"])

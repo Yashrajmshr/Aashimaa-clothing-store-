@@ -1,4 +1,6 @@
 import secrets
+import hashlib
+import hmac
 from datetime import datetime, timedelta
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -120,17 +122,16 @@ def send_customer_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     # Strictly lookup patron record for THIS mobile number
     customer = db.query(Customer).filter(Customer.phone.endswith(phone), Customer.is_deleted == False).first()
 
-    # If new patron accessing portal, register customer account automatically
     if not customer:
-        cust_cnt = db.query(Customer).count() + 1
-        customer = Customer(
-            customer_code=f"CUST-{cust_cnt:04d}",
-            phone=phone,
-            full_name=f"Patron {phone}",
-            patron_tier="Bronze"
-        )
-        db.add(customer)
-        db.flush()
+        # Keep the response generic so this endpoint does not enumerate customer accounts.
+        return {"status": "success", "message": "If this number is registered, a verification code will be sent.", "expires_in_seconds": settings.OTP_EXPIRE_MINUTES * 60}
+
+    if customer.otp_generated_at and (datetime.utcnow() - customer.otp_generated_at).total_seconds() < 60:
+        return {
+            "status": "success",
+            "message": "If this number is registered, a verification code will be sent.",
+            "expires_in_seconds": settings.OTP_EXPIRE_MINUTES * 60
+        }
 
     # If booking_number supplied, resolve flexibly
     if request.booking_number:
@@ -158,12 +159,15 @@ def send_customer_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     # Generate genuine cryptographically secure 6-digit OTP
     otp = str(secrets.randbelow(900000) + 100000)
 
-    customer.last_otp = otp
+    customer.last_otp = hmac.new(
+        settings.SECRET_KEY.encode("utf-8"), otp.encode("utf-8"), hashlib.sha256
+    ).hexdigest()[:10]
     customer.otp_generated_at = datetime.utcnow()
     customer.otp_attempts = 0
     db.commit()
 
-    # Dispatch via SMS Gateway (Fast2SMS / Twilio) and WhatsApp link
+    # Dispatch through the configured provider. OTP values and bearer links must not
+    # be returned to the requesting browser or written to application logs.
     dispatch_res = NotificationService.send_otp(
         db=db,
         phone=phone,
@@ -175,10 +179,8 @@ def send_customer_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
 
     return {
         "status": "success",
-        "message": f"6-digit verification code successfully dispatched to +91 ******{phone[-4:]}",
-        "expires_in_seconds": settings.OTP_EXPIRE_MINUTES * 60,
-        "sms_delivered": dispatch_res.get("sms_delivered", False),
-        "whatsapp_url": dispatch_res.get("whatsapp_url")
+        "message": "If this number is registered, a verification code will be sent.",
+        "expires_in_seconds": settings.OTP_EXPIRE_MINUTES * 60
     }
 
 @router.post("/customer/verify-otp", response_model=CustomerAuthResponse)
@@ -191,17 +193,24 @@ def verify_customer_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)
     customer = db.query(Customer).filter(Customer.phone.endswith(phone), Customer.is_deleted == False).first()
     
     if not customer:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No customer registered with this phone number")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP code")
+
+    if customer.otp_attempts >= 5:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP code")
 
     # Verify OTP
     is_valid_otp = False
-    if customer.last_otp and customer.last_otp == request.otp.strip():
+    submitted_otp = request.otp.strip()
+    submitted_digest = hmac.new(
+        settings.SECRET_KEY.encode("utf-8"), submitted_otp.encode("utf-8"), hashlib.sha256
+    ).hexdigest()[:10]
+    if customer.last_otp and hmac.compare_digest(customer.last_otp, submitted_digest):
         # Check expiry
         if customer.otp_generated_at and (datetime.utcnow() - customer.otp_generated_at).total_seconds() <= settings.OTP_EXPIRE_MINUTES * 60:
             is_valid_otp = True
 
     # Fallback in dev/sandbox
-    if settings.ENVIRONMENT == "development" and request.otp.strip() == settings.DEFAULT_OTP_BYPASS:
+    if settings.ENVIRONMENT in {"development", "test"} and settings.DEFAULT_OTP_BYPASS and submitted_otp == settings.DEFAULT_OTP_BYPASS:
         is_valid_otp = True
 
     if not is_valid_otp:

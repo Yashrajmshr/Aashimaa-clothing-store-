@@ -1,0 +1,17 @@
+{
+  "name": "aashima-erp",
+  "private": true,
+  "workspaces": [
+    "apps/admin-web",
+    "apps/customer-web",
+    "apps/mobile"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.6"
+  }
+}

@@ -3,8 +3,9 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
-from backend.app.api.deps import get_current_user
+from backend.app.api.deps import get_current_user, require_roles
 from backend.app.models.auth import User
+from backend.app.core.business_config import UserRole
 from backend.app.models.delivery import Delivery, TransportationUpdate
 from backend.app.schemas.delivery import (
     DeliveryCreate,
@@ -16,7 +17,7 @@ from backend.app.schemas.delivery import (
 
 router = APIRouter(prefix="/deliveries", tags=["Transportation & Delivery Centre"])
 
-@router.get("", response_model=List[DeliveryResponse])
+@router.get("", response_model=List[DeliveryResponse], dependencies=[Depends(require_roles([UserRole.DELIVERY_STAFF, UserRole.MANAGER]))])
 def list_deliveries(
     status: Optional[str] = Query(None),
     skip: int = 0,
@@ -29,7 +30,7 @@ def list_deliveries(
         query = query.filter(Delivery.status == status)
     return query.order_by(Delivery.scheduled_date.asc()).offset(skip).limit(limit).all()
 
-@router.post("", response_model=DeliveryResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=DeliveryResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles([UserRole.MANAGER]))])
 def create_delivery(
     payload: DeliveryCreate,
     db: Session = Depends(get_db),
@@ -56,7 +57,7 @@ def create_delivery(
     db.refresh(delivery)
     return delivery
 
-@router.post("/{delivery_id}/updates", response_model=TransportationUpdateResponse)
+@router.post("/{delivery_id}/updates", response_model=TransportationUpdateResponse, dependencies=[Depends(require_roles([UserRole.DELIVERY_STAFF, UserRole.MANAGER]))])
 def add_transport_update(
     delivery_id: int,
     payload: TransportationUpdateCreate,
@@ -80,7 +81,7 @@ def add_transport_update(
     db.refresh(upd)
     return upd
 
-@router.put("/{delivery_id}", response_model=DeliveryResponse)
+@router.put("/{delivery_id}", response_model=DeliveryResponse, dependencies=[Depends(require_roles([UserRole.DELIVERY_STAFF, UserRole.MANAGER]))])
 def update_delivery(
     delivery_id: int,
     payload: DeliveryUpdate,

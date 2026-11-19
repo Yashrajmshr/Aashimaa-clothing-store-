@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from backend.app.core.database import get_db
-from backend.app.api.deps import get_current_user
+from backend.app.api.deps import get_current_user, require_roles
 from backend.app.models.auth import User
 from backend.app.models.customer import Customer
 from backend.app.models.service import Service
@@ -23,7 +23,8 @@ from backend.app.models.billing import Payment, PaymentReceipt
 from backend.app.schemas.booking import BookingCreate, BookingResponse
 from backend.app.services.qr_service import generate_secure_token
 from backend.app.services.billing_service import round_currency, generate_payment_reference, generate_receipt_number
-from backend.app.core.business_config import WorkflowStage
+from backend.app.core.business_config import WorkflowStage, UserRole
+from backend.app.core.config import settings
 
 router = APIRouter(prefix="/bookings", tags=["Booking Management"])
 
@@ -31,7 +32,7 @@ def generate_booking_number(db: Session) -> str:
     count = db.query(Booking).count() + 8843
     return f"ASH-{count}"
 
-@router.get("", response_model=List[BookingResponse])
+@router.get("", response_model=List[BookingResponse], dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER, UserRole.ACCOUNTANT]))])
 def list_bookings(
     search: Optional[str] = Query(None, description="Search by booking #, customer name or phone"),
     division: Optional[str] = Query(None),
@@ -64,7 +65,7 @@ def list_bookings(
     bookings = query.order_by(Booking.created_at.desc()).offset(skip).limit(limit).all()
     return bookings
 
-@router.get("/{booking_id}", response_model=BookingResponse)
+@router.get("/{booking_id}", response_model=BookingResponse, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER, UserRole.ACCOUNTANT]))])
 def get_booking(
     booking_id: int,
     db: Session = Depends(get_db),
@@ -75,7 +76,7 @@ def get_booking(
         raise HTTPException(status_code=404, detail="Booking not found")
     return booking
 
-@router.post("", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=BookingResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER]))])
 def create_booking(
     payload: BookingCreate,
     db: Session = Depends(get_db),
@@ -88,6 +89,15 @@ def create_booking(
     if not payload.garments:
         raise HTTPException(status_code=400, detail="At least one garment is required to create a booking")
 
+    advance_reference = payload.advance_transaction_id.strip() if payload.advance_transaction_id else None
+    if advance_reference:
+        duplicate_reference = db.query(Payment).filter(
+            Payment.transaction_id == advance_reference,
+            Payment.is_deleted == False
+        ).first()
+        if duplicate_reference:
+            raise HTTPException(status_code=409, detail="Payment transaction reference has already been used")
+
     booking_num = generate_booking_number(db)
     
     total_amount = Decimal("0.00")
@@ -98,26 +108,30 @@ def create_booking(
     for g_idx, g_data in enumerate(payload.garments, 1):
         g_item_price = Decimal("0.00")
         services_to_attach = []
+        if len(set(g_data.service_ids)) != len(g_data.service_ids):
+            raise HTTPException(status_code=422, detail="A service may only be selected once per garment")
         for s_id in g_data.service_ids:
-            service = db.query(Service).filter(Service.id == s_id).first()
-            if service:
-                price = service.pricing_tiers[0].base_price if service.pricing_tiers else Decimal("500.00")
-                rate = service.pricing_tiers[0].gst_rate if service.pricing_tiers else Decimal("5.00")
-                gst_amt = round_currency(price * (rate / Decimal("100.0")))
-                total_srv_price = price + gst_amt
-                
-                g_item_price += price
-                total_amount += price
-                total_tax += gst_amt
-                services_to_attach.append({
-                    "service_id": service.id,
-                    "service_name": service.name,
-                    "category": service.category,
-                    "price": price,
-                    "gst_rate": rate,
-                    "gst_amount": gst_amt,
-                    "total_service_price": total_srv_price
-                })
+            service = db.query(Service).filter(Service.id == s_id, Service.is_active == True).first()
+            if not service:
+                raise HTTPException(status_code=422, detail=f"Service {s_id} is unavailable")
+            price = service.pricing_tiers[0].base_price if service.pricing_tiers else Decimal("500.00")
+            rate = service.pricing_tiers[0].gst_rate if service.pricing_tiers else Decimal("5.00")
+            taxable_amount = round_currency(price * g_data.quantity)
+            gst_amt = round_currency(taxable_amount * (rate / Decimal("100.0")))
+            total_srv_price = taxable_amount + gst_amt
+
+            g_item_price += taxable_amount
+            total_amount += taxable_amount
+            total_tax += gst_amt
+            services_to_attach.append({
+                "service_id": service.id,
+                "service_name": service.name,
+                "category": service.category,
+                "price": price,
+                "gst_rate": rate,
+                "gst_amount": gst_amt,
+                "total_service_price": total_srv_price
+            })
         garment_service_maps.append((g_data, g_item_price, services_to_attach))
 
     net_amount = total_amount + total_tax
@@ -179,7 +193,7 @@ def create_booking(
             garment_id=garment.id,
             qr_code_identifier=qr_ident,
             secure_token=sec_token,
-            public_tracking_url=f"http://localhost:3000/track?token={sec_token}",
+            public_tracking_url=f"{settings.PUBLIC_BASE_URL.rstrip('/')}/?token={sec_token}",
             is_active=True,
             print_count=0
         )
@@ -263,7 +277,7 @@ def create_booking(
     db.refresh(booking)
     return booking
 
-@router.delete("/{booking_id}", status_code=status.HTTP_200_OK)
+@router.delete("/{booking_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_roles([UserRole.MANAGER]))])
 def delete_booking(
     booking_id: int,
     db: Session = Depends(get_db),

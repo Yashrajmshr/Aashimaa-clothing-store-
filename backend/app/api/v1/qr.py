@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
-from backend.app.api.deps import get_current_user
+from backend.app.api.deps import get_current_user, require_roles
 from backend.app.models.auth import User
 from backend.app.models.booking import Garment, Booking
 from backend.app.models.customer import Customer
@@ -11,10 +11,11 @@ from backend.app.models.qr import GarmentQRToken, QRScanHistory
 from backend.app.schemas.qr import QRScanRequest, QRScanResponse, QRPrintRequest
 from backend.app.services.qr_service import generate_qr_data_uri, generate_thermal_slip_text
 from backend.app.core.config import settings
+from backend.app.core.business_config import UserRole
 
 router = APIRouter(prefix="/qr", tags=["Unique QR Code System"])
 
-@router.post("/scan", response_model=QRScanResponse)
+@router.post("/scan", response_model=QRScanResponse, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER, UserRole.DELIVERY_STAFF]))])
 def scan_qr_code(
     payload: QRScanRequest,
     db: Session = Depends(get_db),
@@ -86,7 +87,7 @@ def scan_qr_code(
         photo_urls=photo_urls
     )
 
-@router.post("/print-slips")
+@router.post("/print-slips", dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER]))])
 def generate_print_slips(
     payload: QRPrintRequest,
     db: Session = Depends(get_db),

@@ -1,35 +1,54 @@
-# AASHIMA ERP – Project Implementation Status Matrix
+# AASHIMA ERP — Production Readiness Status
 
-**Project**: AASHIMA Women's World & AASHIMA Stitchers 'N' Drapers ERP  
-**Location**: 581, Turab Nagar, Ghaziabad, Uttar Pradesh, India  
-**Audit & Verification Date**: November 2026  
-**Status**: 100% Production-Ready Ecosystem Implemented, Tested & Verified  
+**Review date:** 18 November 2026
+**Assessment:** **NOT PRODUCTION READY**
+**Release decision:** Blocked by OTP operations, financial/data integrity, database adoption, recovery verification, and deployment checks.
 
----
+## Verified state
 
-## Detailed Phase Status Matrix
+| Area | State | Evidence / limit |
+|---|---|---|
+| Backend feature surface | Implemented, partly verified | API suite covers health, staff login, OTP flow, customer isolation, multi-quantity booking, QR scan, workflow transition, tracking, GST/non-GST invoices, payment/refund, and soft delete. |
+| Customer privacy | Mitigated in code | Public tracking requires a customer JWT and checks QR/booking ownership and deletion status. Anonymous and authenticated cross-customer denial passed API/Playwright checks. |
+| Admin authentication | Improved, partly verified | Hard-coded auto-login removed; Playwright confirms the sign-in form renders. Existing owner credentials still need rotation. |
+| Role authorization | Implemented, partial matrix verified | Internal route groups declare role policies; Staff, Accountant, Delivery Staff, and Customer allow/deny checks passed. Manager/Owner full endpoint matrix and business policy review remain. |
+| OTP security | Partly improved | HMAC digest at rest; uniform responses for unknown, cooldown, and registered phones; no delivery-status leak, OTP link, or log; five attempts/code. Production requires real provider credentials. IP throttling and live delivery remain unverified. |
+| Database migrations | Clean-install path verified on SQLite | Follow-up baseline creates modeled schema; applied to isolated database. PostgreSQL and existing database adoption are unverified. |
+| Seeding | Safer default | Additive by default; production cleanup is rejected and production owner bootstrap requires an explicit password. |
+| Billing | Basic guardrails added | Collection amount is capped at balance; invoice creation syncs booking balances; refunds are role-restricted; repeat transaction references return the original receipt; PDFs refresh after payments/refunds. Authoritative ledger, request-key idempotency, concurrency, and GST discount treatment remain incomplete. |
+| Frontend builds | Passed | `npm run build` succeeded for all three apps with the dependency-free static copier; static server, traversal check, and Chromium sign-in render passed. |
+| Backend API tests | Passed | 10 passed on a fresh disposable SQLite database; 22 Pydantic deprecation warnings. Includes role matrix samples, OTP enumeration checks, quantity pricing, GST/non-GST reconciliation, refund, PDF ownership/refresh, and SQLite recovery. |
+| Playwright | Smoke checks passed | 2 passed: admin sign-in displayed, anonymous tracking denied. Full business workflows are not covered. |
+| Dependency audit | Passed | Removed Vite and `picomatch` from the dependency tree. Both online and offline `npm audit` report 0 vulnerabilities. |
+| Docker/HTTPS/PostgreSQL | Not verified | Compose syntax was reviewed and its dependency indentation corrected; Docker is unavailable here. DB/backend stay private and the HTTP frontend binds to loopback for external TLS. No container/PostgreSQL/TLS deployment was run. |
+| Backup/recovery | Partially improved | SQLite online snapshot/checksum and new-target restore tested on disposable DB. PostgreSQL, encrypted off-host retention, media recovery, and full restore drill remain unverified. |
+| Integrations/hardware | Not verified | No SMS/WhatsApp credentials, printer, or camera workflow was available. |
 
-| Module / Phase | Implementation Scope & Delivered Features | Status | Verification Evidence |
-|---|---|---|---|
-| **Phase 0: Project Discovery** | Extracted & audited all 6 Google Stitch screens, assets, and design tokens (`regal_atelier_erp/DESIGN.md`). Created comprehensive `DESIGN_AUDIT.md`. | **Verified** | `DESIGN_AUDIT.md` created; tokens mapped for all 3 apps. |
-| **Phase 1: System Architecture** | Modular monorepo with `apps/mobile`, `apps/admin-web`, `apps/customer-web`, `backend`, `infrastructure`, `docs`, and `scripts`. | **Verified** | Clean directory layout, independent apps sharing central FastAPI backend. |
-| **Phase 2: Business Configuration** | Configured AASHIMA Women's World & Stitchers 'N' Drapers, 581 Turab Nagar address, INR currency, 5 standard service categories, GST rates, and 58mm/80mm print standards. | **Verified** | `backend/app/core/business_config.py` active and imported across system. |
-| **Phase 3: Database Design** | 33 normalized tables, SQLAlchemy models, proper foreign keys, unique constraints, `Numeric(12, 2)` decimal precision, soft deletion, Alembic migrations, and seed script. | **Verified** | 33 models created; Alembic migration `d40cfe1fd07e` generated; `seed_data.py` executed cleanly. |
-| **Phase 4: Authentication & RBAC** | Owner & staff bcrypt authentication, Customer 6-digit phone OTP authentication, JWT access/refresh tokens, role-based guard (Owner, Manager, Staff, Accountant, Delivery Staff, Customer). Restricted customer accounts from internal admin APIs. | **Verified** | `test_owner_login`, `test_customer_otp_flow`, and `test_customer_cannot_access_admin_api` passed in pytest. |
-| **Phase 5: Android Mobile App** | Complete Stitch Android app (`apps/mobile/`) with Splash, Login, Dashboard, New Booking multi-garment, 0.25" increment Measurement Matrix, optical camera QR scanning, Stage Update with phone/WhatsApp shortcuts, Department Queues, Payments, and 80mm thermal slip preview. | **Verified** | Full interactive mobile client implemented in `apps/mobile/src/main.js` and `index.html`. |
-| **Phase 6: Admin Web Dashboard** | Complete Stitch enterprise dashboard (`apps/admin-web/`) with 4 Stitch stat cards, Karkhana Live Pipeline Kanban board, Customer Registry ledger, Measurement Book, GST Invoicing & tax ledger, QR & Thermal batch printing, Expenses, Settings, and Thermal drawer. | **Verified** | Enterprise dashboard implemented in `apps/admin-web/src/main.js` and `index.html`. |
-| **Phase 7: Customer Website** | Complete Stitch customer portal (`apps/customer-web/`) with luxury atelier branding, Track Order via OTP or direct QR token, 5-stage live status tracker with pulsing node, intake inspection photo gallery, itemized bill, tax invoice download, and WhatsApp/phone assistance. | **Verified** | Live customer portal implemented in `apps/customer-web/src/main.js` and `index.html`. |
-| **Phase 8: Unique QR Code System** | Cryptographic HMAC-signed unpredictable tracking tokens (`token_sec_...`), Base64 PNG data URIs, ESC/POS 58mm & 80mm thermal text generation, scan history logging in `qr_scan_history`. | **Verified** | `test_create_customer_and_booking_with_multiple_garments` verified QR token generation and staff scanning. |
-| **Phase 9: Order Workflow Engine** | Department workflow transitions (Intake -> Alteration -> Deep Cleaning -> Finishing -> Delivery Centre -> Ready -> Out for Delivery -> Delivered), skip-stage logic, immutable audit trail in `order_status_history`. | **Verified** | `workflow_engine.py` transition tested; sibling article status resolution verified. |
-| **Phase 10: Billing & Financials** | GST & Non-GST invoice generation, exact Decimal CGST/SGST/IGST calculations, automatic invoice numbering (`ASH-INV-YYYY-XXXX`), advance and partial payment recording, payment receipts, daybook position, ReportLab A4 tax invoice PDF generation. | **Verified** | Automated PDF invoice generated on disk; payment balance deduction tested in pytest. |
-| **Phase 11: Transportation & Delivery** | Delivery scheduling, delivery staff assignment, tracking numbers, transportation milestone updates, and proof-of-delivery (POD) collection. | **Verified** | `deliveries` router and `delivery.py` models implemented and tested. |
-| **Phase 12: Notification System** | SMS & WhatsApp notification engine with template substitution, provider-independent architecture (Mock, Twilio, Fast2SMS, Gupshup), and retry logs in `notification_logs`. | **Verified** | `notification_service.py` implemented with 10 pre-configured event templates. |
-| **Phase 13: Reporting & Analytics** | Daybook collections (Cash vs UPI), live pipeline wing counts, urgent delivery flags, and printable daybook positions. | **Verified** | `report_service.py` connected to dashboard metrics API endpoint. |
-| **Phase 14: Documentation Package** | System architecture diagrams, 33-table ER diagram, data dictionary, UML diagrams (Use Case, Activity, Sequence, State Machine, Component), business process flows, and complete API endpoint catalogue. | **Verified** | All markdown documents created in `/docs/architecture`, `/docs/database`, `/docs/diagrams`, and `/docs/api`. |
-| **Phase 15: Standard Operating Procedures** | SOP-001 through SOP-020 (all 20 SOPs fully documented with Purpose, Scope, Steps, Exceptions, Security, Records), plus 5 dedicated User Manuals (Owner, Staff, Accountant, Delivery Staff, Customer). | **Verified** | `/docs/sop/STANDARD_OPERATING_PROCEDURES.md` and `/docs/user-manuals/` created. |
-| **Phase 16: Testing & Quality Assurance** | Automated pytest suite covering healthcheck, owner login, customer OTP verification, customer 403 access control check, multi-garment booking, QR scanning, stage transition, public live tracking, and GST invoice generation. | **Verified** | 100% of test cases passed in `backend/tests/test_api_suite.py`. |
-| **Phase 17: Deployment & DevOps** | Production Dockerfiles (Backend & Frontend), Docker Compose multi-container stack, Nginx reverse proxy routing with SSL support, `.env.example`, database backup script (`scripts/backup_db.py`), and restore script (`scripts/restore_db.py`). | **Verified** | Backup and restore scripts tested with actual SQLite/Postgres dump and restore. |
-| **Phase 18: Final Deliverables** | Master `README.md`, `DESIGN_AUDIT.md`, `PROJECT_STATUS.md`, production deployment guide, and known limitations document. | **Verified** | All 20 required deliverables completed and in place. |
+## Remaining release gates
 
----
-*Signoff: AASHIMA ERP Software Architecture & Engineering Team • November 2026*
+### P0 — required before production use
+
+- Complete role-by-role API matrix tests and review policies against business duties.
+- Add IP/device OTP limits, confirm provider delivery, and test account recovery and resend abuse.
+- Reconcile all financial events from an authoritative ledger; add request-key idempotency and concurrency guarantees, and have an accountant review GST discount treatment.
+- Validate existing database schema and document a reviewed Alembic stamp/adoption plan; verify on PostgreSQL.
+- Configure and verify external HTTPS and a compatible CSP; basic Nginx headers are present and Compose binds HTTP to loopback for the TLS proxy.
+- Verify PostgreSQL backup/restore, encrypted off-host retention, media recovery, and a full recovery drill.
+
+### P1 — required for operational signoff
+
+- Add input validation and managed upload/path handling; test PDF and receipt delivery.
+- Add full browser workflows for customers, measurements, bookings, QR, department queues, payments/refunds, GST/non-GST invoices, reports, and settings.
+- Complete mobile, accessibility, keyboard, and Hindi/English staff usability review.
+- Add audit log policies, monitoring/alerting, database migration readiness checks, dependency lock for Python, and CI build/test runs.
+
+## Test report
+
+- Alembic clean install on disposable SQLite: passed through revision `37938752a9d1`.
+- Backend API suite: **10 passed**, **22 deprecation warnings**.
+- Playwright security smoke tests: **2 passed**.
+- Frontend production builds: **3 passed**.
+- `npm audit` and `npm audit --offline`: **0 vulnerabilities** after removing Vite/picomatch.
+- Production PostgreSQL migration, Docker deployment, HTTPS, SMS/WhatsApp delivery, physical printing/scanning, backup, and recovery drill: not run.
+
+See [PROJECT_AUDIT.md](PROJECT_AUDIT.md), [BUG_REPORT.md](BUG_REPORT.md), [SECURITY_AUDIT.md](SECURITY_AUDIT.md), [TEST_REPORT.md](TEST_REPORT.md), [deployment guide](docs/architecture/deployment_guide.md), and [backup/recovery guide](docs/architecture/backup_recovery_guide.md).

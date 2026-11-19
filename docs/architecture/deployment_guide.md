@@ -1,4 +1,4 @@
-# AASHIMA ERP – Production Deployment & DevOps Guide
+# AASHIMA ERP – Deployment Guide (Production Gate Open)
 
 **Target Environment**: Linux Ubuntu 22.04 LTS / Debian 12 / Docker Engine  
 **Domain Structure**:
@@ -17,7 +17,13 @@
 
 ---
 
-## 2. Step-by-Step Deployment Procedure
+## 2. Production deployment is currently blocked
+
+Do not deploy the current application with real customer or financial data. The audit found unresolved OTP operations, financial integrity, dependency, backup/recovery, and deployment verification issues. Role policies and customer tracking controls were added, but broader authorization testing remains. See `PROJECT_STATUS.md` and `SECURITY_AUDIT.md`.
+
+The following is a preparation checklist only. It is not a validated production runbook until the blockers are resolved and a clean PostgreSQL deployment plus recovery drill succeeds.
+
+## 3. Preparation checklist
 
 ### Step 1: Clone Workspace & Configure Environment
 ```bash
@@ -26,46 +32,47 @@ cd /opt/aashima-erp
 cp .env.example .env
 nano .env
 ```
-Ensure `POSTGRES_PASSWORD`, `SECRET_KEY`, and production domain names are set.
+Set `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `SECRET_KEY` (unique random value, 32+ characters), `PUBLIC_BASE_URL` (HTTPS domain), `ENVIRONMENT=production`, the selected SMS provider and its credentials, and exact `BACKEND_CORS_ORIGINS`. Set `BOOTSTRAP_OWNER_PASSWORD` (12+ characters) for the first owner seed; remove it from the environment after the owner is created and rotate the account through the approved account process. Do not use the example values as credentials. Keep `.env` out of source control and restrict file access.
 
-### Step 2: Build & Launch Docker Services
+### Step 2: Build images only after P0/P1 findings are closed
 ```bash
+docker compose config
 docker compose build --no-cache
-docker compose up -d
 ```
 
-### Step 3: Run Database Migrations & Seed Default Services
+### Step 3: Run migrations against a reviewed target database
 ```bash
-docker compose exec backend py -m alembic -c backend/alembic.ini upgrade head
-docker compose exec backend py -m backend.app.services.seed_data
+docker compose run --rm backend python -m alembic -c backend/alembic.ini upgrade head
+docker compose run --rm backend python -m backend.app.services.seed_data
 ```
 
-### Step 4: Verify Service Health
+### Step 4: Verify readiness, security, and recovery before routing customer traffic
 ```bash
-curl http://localhost:8000/health
+curl http://127.0.0.1:8080/ready
 ```
-Expected response:
+Expected readiness response after the database is available:
 ```json
 {
-  "status": "healthy",
-  "business": "AASHIMA Women's World & AASHIMA Stitchers 'N' Drapers",
-  "location": "581, Turab Nagar, Ghaziabad, Uttar Pradesh, 201001, India",
-  "version": "2.4.0",
-  "environment": "production"
+  "status": "ready"
 }
 ```
 
 ---
 
-## 3. Automated Backup Configuration (Cron)
-Add a crontab entry to execute daily automated backups at 02:00 AM IST:
-```cron
-0 2 * * * cd /opt/aashima-erp && docker compose exec -T backend py scripts/backup_db.py >> /var/log/aashima_backup.log 2>&1
-```
+## 4. Backups
+
+The backup scripts now use consistent SQLite snapshots, checksums, argument-array PostgreSQL commands, and new-target-only restore behavior. They are not production-approved until PostgreSQL restore, encrypted off-host storage, retention, and a full recovery drill are verified. Follow [backup_recovery_guide.md](backup_recovery_guide.md).
 
 ---
 
-## 4. Hardware Verification & Thermal Printing
+## 5. HTTPS, logging, and infrastructure requirements
+
+- Compose binds the HTTP frontend to `127.0.0.1:8080`; place it behind a separately managed TLS terminator with HTTP-to-HTTPS redirect and HSTS. Nginx adds basic content-type, referrer, frame, and permissions headers; CSP and external TLS are not supplied or verified by this repository.
+- Keep PostgreSQL and backend ports private; expose only the TLS entry point.
+- Configure structured redacted logs, alerting, readiness checks, disk monitoring, and access review.
+- Complete a restore drill and record the recovery point and recovery time before launch.
+
+## 6. Hardware verification
 - Pair the ESC/POS printer via Bluetooth or USB:
   - Default baud rate: 9600 / 115200
   - Default width: 80mm (48 characters per line) or 58mm (32 characters per line)

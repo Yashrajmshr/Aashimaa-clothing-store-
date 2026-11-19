@@ -1,11 +1,12 @@
 import os
+from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
-from backend.app.api.deps import get_current_user, require_roles
+from backend.app.api.deps import get_current_user, get_current_customer, require_roles
 from backend.app.models.auth import User
 from backend.app.models.billing import Invoice, Payment, Expense, GSTConfiguration
 from backend.app.schemas.billing import (
@@ -20,10 +21,12 @@ from backend.app.schemas.billing import (
 from backend.app.services.billing_service import create_invoice_for_booking, record_payment
 from backend.app.services.report_service import get_daybook_summary
 from backend.app.core.business_config import UserRole
+from backend.app.core.config import settings
+from backend.app.models.customer import Customer
 
 router = APIRouter(prefix="/billing", tags=["Financials, Invoicing & Daybook Ledger"])
 
-@router.get("/daybook-summary", response_model=DaybookSummaryResponse)
+@router.get("/daybook-summary", response_model=DaybookSummaryResponse, dependencies=[Depends(require_roles([UserRole.ACCOUNTANT, UserRole.MANAGER]))])
 def get_daybook(
     date_str: Optional[str] = Query(None, description="YYYY-MM-DD"),
     db: Session = Depends(get_db),
@@ -37,7 +40,7 @@ def get_daybook(
             raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
     return get_daybook_summary(db, target)
 
-@router.get("/invoices", response_model=List[InvoiceResponse])
+@router.get("/invoices", response_model=List[InvoiceResponse], dependencies=[Depends(require_roles([UserRole.ACCOUNTANT, UserRole.MANAGER]))])
 def list_invoices(
     booking_id: Optional[int] = Query(None),
     invoice_type: Optional[str] = Query(None),
@@ -53,7 +56,7 @@ def list_invoices(
         query = query.filter(Invoice.invoice_type == invoice_type)
     return query.order_by(Invoice.invoice_date.desc()).offset(skip).limit(limit).all()
 
-@router.post("/invoices", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/invoices", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles([UserRole.ACCOUNTANT, UserRole.MANAGER]))])
 def create_invoice(
     payload: InvoiceCreate,
     db: Session = Depends(get_db),
@@ -69,7 +72,7 @@ def create_invoice(
     )
     return invoice
 
-@router.get("/invoices/{invoice_id}/pdf")
+@router.get("/invoices/{invoice_id}/pdf", dependencies=[Depends(require_roles([UserRole.ACCOUNTANT, UserRole.MANAGER]))])
 def download_invoice_pdf(
     invoice_id: int,
     db: Session = Depends(get_db),
@@ -82,13 +85,34 @@ def download_invoice_pdf(
     if not invoice.pdf_path:
         raise HTTPException(status_code=404, detail="PDF invoice file not generated")
 
-    abs_path = os.path.join(os.getcwd(), invoice.pdf_path.lstrip("/"))
-    if not os.path.exists(abs_path):
+    invoice_root = settings.INVOICE_DIR.resolve()
+    abs_path = (invoice_root / Path(invoice.pdf_path).name).resolve()
+    if abs_path.parent != invoice_root or not abs_path.is_file():
         raise HTTPException(status_code=404, detail="Invoice PDF file missing from disk")
 
     return FileResponse(abs_path, media_type="application/pdf", filename=f"{invoice.invoice_number}.pdf")
 
-@router.delete("/invoices/{invoice_id}", status_code=status.HTTP_200_OK)
+@router.get("/invoices/{invoice_id}/customer-pdf")
+def download_customer_invoice_pdf(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer)
+):
+    invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.customer_id == customer.id,
+        Invoice.is_deleted == False
+    ).first()
+    if not invoice or not invoice.pdf_path:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    invoice_root = settings.INVOICE_DIR.resolve()
+    abs_path = (invoice_root / Path(invoice.pdf_path).name).resolve()
+    if abs_path.parent != invoice_root or not abs_path.is_file():
+        raise HTTPException(status_code=404, detail="Invoice PDF file missing from disk")
+    return FileResponse(abs_path, media_type="application/pdf", filename=f"{invoice.invoice_number}.pdf")
+
+@router.delete("/invoices/{invoice_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_roles([UserRole.MANAGER]))])
 def delete_invoice(
     invoice_id: int,
     db: Session = Depends(get_db),
@@ -106,7 +130,7 @@ def delete_invoice(
         "invoice_id": invoice_id
     }
 
-@router.get("/payments", response_model=List[PaymentResponse])
+@router.get("/payments", response_model=List[PaymentResponse], dependencies=[Depends(require_roles([UserRole.ACCOUNTANT, UserRole.MANAGER]))])
 def list_payments(
     booking_id: Optional[int] = Query(None),
     skip: int = 0,
@@ -119,12 +143,16 @@ def list_payments(
         query = query.filter(Payment.booking_id == booking_id)
     return query.order_by(Payment.created_at.desc()).offset(skip).limit(limit).all()
 
-@router.post("/payments", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/payments", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.ACCOUNTANT, UserRole.MANAGER]))])
 def add_payment(
     payload: PaymentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    if payload.payment_type == "Refund":
+        roles = {role.name for role in current_user.roles}
+        if not roles.intersection({UserRole.OWNER, UserRole.MANAGER, UserRole.ACCOUNTANT}):
+            raise HTTPException(status_code=403, detail="Refunds require Manager or Accountant authorization")
     payment, receipt = record_payment(
         db=db,
         booking_id=payload.booking_id,
@@ -137,7 +165,7 @@ def add_payment(
     )
     return payment
 
-@router.get("/expenses", response_model=List[ExpenseResponse])
+@router.get("/expenses", response_model=List[ExpenseResponse], dependencies=[Depends(require_roles([UserRole.ACCOUNTANT, UserRole.MANAGER]))])
 def list_expenses(
     category: Optional[str] = Query(None),
     skip: int = 0,
@@ -150,7 +178,7 @@ def list_expenses(
         query = query.filter(Expense.category == category)
     return query.order_by(Expense.created_at.desc()).offset(skip).limit(limit).all()
 
-@router.post("/expenses", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/expenses", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles([UserRole.ACCOUNTANT, UserRole.MANAGER]))])
 def create_expense(
     payload: ExpenseCreate,
     db: Session = Depends(get_db),
@@ -175,7 +203,7 @@ def create_expense(
     db.refresh(expense)
     return expense
 
-@router.delete("/expenses/{expense_id}", status_code=status.HTTP_200_OK)
+@router.delete("/expenses/{expense_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_roles([UserRole.MANAGER]))])
 def delete_expense(
     expense_id: int,
     db: Session = Depends(get_db),

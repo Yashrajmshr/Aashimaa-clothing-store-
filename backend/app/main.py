@@ -3,8 +3,9 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from backend.app.core.config import settings
-from backend.app.core.database import engine, Base
+from backend.app.core.database import engine
 from backend.app.api.v1 import (
     auth,
     customers,
@@ -19,9 +20,6 @@ from backend.app.api.v1 import (
     settings as app_settings,
     public_tracking
 )
-
-# Ensure DB tables exist
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="AASHIMA ERP API",
@@ -69,6 +67,15 @@ def health_check():
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT
     }
+
+@app.get("/ready", tags=["Health"])
+def readiness_check():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "not_ready", "dependency": "database"})
+    return {"status": "ready"}
 
 # Mount Frontend Applications for unified single-port hosting
 from fastapi.responses import RedirectResponse

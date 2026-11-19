@@ -58,7 +58,7 @@ class GarmentCreate(BaseModel):
     category: str
     fabric_type: Optional[str] = None
     color: Optional[str] = None
-    quantity: int = 1
+    quantity: int = Field(default=1, ge=1)
     rack_location: Optional[str] = None
     special_instructions: Optional[str] = None
     defect_notes: Optional[str] = None

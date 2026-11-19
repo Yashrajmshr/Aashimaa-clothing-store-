@@ -6,15 +6,13 @@ services:
     container_name: aashima_db
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-aashima_erp}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,13 +25,22 @@ services:
     restart: always
     environment:
       - ENVIRONMENT=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-aashima_erp}
-      - SECRET_KEY=${SECRET_KEY:-regal_atelier_super_secure_secret_key_turab_nagar_ghaziabad_2026}
-      - NOTIFICATION_PROVIDER=${NOTIFICATION_PROVIDER:-mock}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-aashima_erp}
+      - POSTGRES_USER=${POSTGRES_USER:?Set POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-aashima_erp}
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY}
+      - BOOTSTRAP_OWNER_PASSWORD=${BOOTSTRAP_OWNER_PASSWORD:-}
+      - NOTIFICATION_PROVIDER=${NOTIFICATION_PROVIDER:?Set NOTIFICATION_PROVIDER to fast2sms or twilio}
+      - FAST2SMS_API_KEY=${FAST2SMS_API_KEY:-}
+      - SMS_API_KEY=${SMS_API_KEY:-}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL}
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-[]}
     volumes:
       - media_data:/app/backend/media
-    ports:
-      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -45,8 +52,7 @@ services:
     container_name: aashima_frontend
     restart: always
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:8080:80"
     depends_on:
       - backend
 

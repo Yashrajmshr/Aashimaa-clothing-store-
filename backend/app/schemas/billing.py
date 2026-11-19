@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Literal
 from decimal import Decimal
 from datetime import datetime
 from pydantic import BaseModel, Field
@@ -6,9 +6,9 @@ from pydantic import BaseModel, Field
 class PaymentCreate(BaseModel):
     booking_id: int
     amount: Decimal = Field(..., gt=0)
-    payment_type: str = "Partial" # Advance, Partial, Final, Refund
-    payment_mode: str = "UPI" # Cash, UPI, Card, NetBanking
-    transaction_id: Optional[str] = None
+    payment_type: Literal["Advance", "Partial", "Final", "Refund"] = "Partial"
+    payment_mode: Literal["Cash", "UPI", "Card", "NetBanking", "Split"] = "UPI"
+    transaction_id: Optional[str] = Field(default=None, max_length=100)
     notes: Optional[str] = None
 
 class PaymentReceiptResponse(BaseModel):
@@ -54,9 +54,9 @@ class InvoiceItemResponse(BaseModel):
 
 class InvoiceCreate(BaseModel):
     booking_id: int
-    invoice_type: str = "GST" # GST or Non-GST
-    discount_amount: Decimal = Decimal("0.00")
-    extra_charges: Decimal = Decimal("0.00")
+    invoice_type: Literal["GST", "Non-GST"] = "GST"
+    discount_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
+    extra_charges: Decimal = Field(default=Decimal("0.00"), ge=0)
 
 class InvoiceResponse(BaseModel):
     id: int

@@ -4,8 +4,8 @@
   "private": true,
   "description": "AASHIMA Enterprise Atelier & Dry-Clean ERP - Admin Web Portal",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "node ../../scripts/serve-frontend.mjs admin-web",
+    "build": "node ../../scripts/build-frontend.mjs admin-web",
+    "preview": "node ../../scripts/serve-frontend.mjs admin-web --dist"
   }
 }

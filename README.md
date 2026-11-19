@@ -1,4 +1,6 @@
-# AASHIMA ERP – Complete Business Management Ecosystem
+# AASHIMA ERP – Business Management Application
+
+> **Readiness notice (18 November 2026):** This repository is not production ready. Do not deploy it with real customer or financial data. See [PROJECT_STATUS.md](PROJECT_STATUS.md), [PROJECT_AUDIT.md](PROJECT_AUDIT.md), [SECURITY_AUDIT.md](SECURITY_AUDIT.md), and [TEST_REPORT.md](TEST_REPORT.md).
 
 **Boutique Divisions**:
 1. **AASHIMA Women's World** (Haute Couture Bridal Wear, Pure Silk Sarees, Heavy Lehengas, Organic Dry Cleaning & Zari Finishing)
@@ -38,7 +40,7 @@ AASHIMA-ERP/
 │   │   ├── schemas/        # Pydantic v2 validation schemas
 │   │   └── services/       # QR generator, Workflow engine, Billing/PDF, Reports, Seed
 │   ├── migrations/         # Alembic database migrations
-│   ├── tests/              # Automated Pytest suite (100% passing)
+│   ├── tests/              # API tests (must use a disposable test database)
 │   ├── alembic.ini         # Alembic configuration
 │   └── requirements.txt    # Production dependencies
 │
@@ -67,7 +69,7 @@ AASHIMA-ERP/
 ## 2. Core Functional Highlights
 
 - **Visual Fidelity to Google Stitch**: Preserves all colors (Imperial Burgundy `#5B132B`, Rose Blush `#D9889E`, Regal Gold `#C59B4B`), Playfair Display and Plus Jakarta Sans typography, and component ergonomics.
-- **Normalized 33-Table Database**: Normalized schema with Decimal financial precision (`NUMERIC(12, 2)`), zero floating-point rounding errors, and Alembic versioning.
+- **Normalized Business Schema**: Database models use Decimal financial precision (`NUMERIC(12, 2)`) and Alembic versioning.
 - **Multi-Garment Booking**: Every booking supports multiple articles, each with unique tags (`ASH-8842-G01`), individual services, rack assignments, and independent stage tracking.
 - **Cryptographic QR Tracking**: Unpredictable HMAC-signed tokens with optical camera scanning and ESC/POS 58mm/80mm thermal claim slips.
 - **Tailoring Measurement Matrix**: 10 key anchor measurements with 0.25" precision steppers and past fitting history baselines.
@@ -84,12 +86,15 @@ AASHIMA-ERP/
 - Node.js 18+ / modern web browser
 - PostgreSQL 16 (optional; SQLite active by default in local dev)
 
-### 1. Initialize Backend & Seed Database
+### 1. Initialize an isolated development database
 ```powershell
 # In project root
 $env:PYTHONPATH="."
 
-# Run database seed (creates tables, default services, and sample Stitch order #ASH-8842)
+# Apply the reviewed schema migrations first
+py -m alembic -c backend/alembic.ini upgrade head
+
+# Add foundational records (this no longer purges transactional data)
 py -m backend.app.services.seed_data
 
 # Launch FastAPI development server
@@ -99,11 +104,18 @@ API Documentation will be live at:
 - **Swagger UI**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
 - **ReDoc**: [http://localhost:8000/api/redoc](http://localhost:8000/api/redoc)
 
-### 2. Run Test Suite
+### 2. Run API tests only against a separate disposable database
 ```powershell
 $env:PYTHONPATH="."
+$env:ENVIRONMENT="test"
+$env:AASHIMA_TESTING="1"
+$env:DATABASE_URL="sqlite:///d:/ashiana/backend/tests/aashima_test.db"
+$env:SECRET_KEY="test-only-random-secret-key-of-at-least-32-characters"
+$env:DEFAULT_OTP_BYPASS="123456"
 py -m pytest backend/tests/test_api_suite.py -v
 ```
+
+The current API suite has not completed successfully in the audit environment. Do not infer a passing result from this quickstart.
 
 ### 3. Open Frontend Applications
 Each frontend application is ready to serve:
@@ -113,7 +125,9 @@ Each frontend application is ready to serve:
 
 ---
 
-## 4. Docker Production Deployment
+## 4. Docker deployment preparation
+
+Production deployment is blocked pending the P0/P1 actions in `PROJECT_STATUS.md`. The Compose configuration requires explicit secrets; Docker, TLS, production PostgreSQL, and recovery have not been validated.
 
 To run the complete production ecosystem with Nginx, PostgreSQL, and FastAPI:
 ```bash

@@ -205,10 +205,10 @@
     </nav>
 
     <!-- Shift & Operator Info Bar -->
-    <div class="p-space-md m-space-sm rounded-lg bg-surface-container flex items-center justify-between border border-outline-variant/30">
+    <div id="operator-badge-container" class="p-space-md m-space-sm rounded-lg bg-surface-container flex items-center justify-between border border-outline-variant/30">
       <div class="flex flex-col">
         <span class="text-[10px] text-on-surface-variant font-bold">Counter Session</span>
-        <span class="text-xs text-primary font-bold">AASHIMA Owner</span>
+        <span id="operator-name" class="text-xs text-primary font-bold">AASHIMA Owner</span>
       </div>
       <button onclick="window.location.reload()" title="Sync Live Data" class="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center text-primary shadow-sm hover:scale-105 active:scale-95 transition-transform">
         <span class="material-symbols-outlined text-[16px]">sync</span>
@@ -309,6 +309,6 @@
   </div>
 
   <!-- Main JavaScript Bundle -->
-  <script type="module" src="./src/main.js"></script>
+  <script src="./src/main.js"></script>
 </body>
 </html>

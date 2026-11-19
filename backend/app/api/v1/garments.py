@@ -4,11 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
-from backend.app.api.deps import get_current_user
+from backend.app.api.deps import get_current_user, require_roles
 from backend.app.models.auth import User
 from backend.app.models.booking import Garment, GarmentPhotograph, GarmentMeasurement
 from backend.app.schemas.garment import GarmentResponse, GarmentPhotographResponse, GarmentMeasurementCreate, GarmentMeasurementResponse
 from backend.app.services.workflow_engine import transition_garment_stage
+from backend.app.core.business_config import UserRole
 
 router = APIRouter(prefix="/garments", tags=["Garment Management & Stage Updates"])
 
@@ -19,7 +20,7 @@ class StageTransitionPayload(BaseModel):
     department: Optional[str] = None
     assigned_karigar_name: Optional[str] = None
 
-@router.get("/{garment_id}", response_model=GarmentResponse)
+@router.get("/{garment_id}", response_model=GarmentResponse, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER, UserRole.ACCOUNTANT, UserRole.DELIVERY_STAFF]))])
 def get_garment(
     garment_id: int,
     db: Session = Depends(get_db),
@@ -35,7 +36,7 @@ def get_garment(
         resp.secure_token = garment.qr_token.secure_token
     return resp
 
-@router.post("/{garment_id}/transition", response_model=GarmentResponse)
+@router.post("/{garment_id}/transition", response_model=GarmentResponse, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER, UserRole.DELIVERY_STAFF]))])
 def update_garment_stage(
     garment_id: int,
     payload: StageTransitionPayload,
@@ -63,7 +64,7 @@ def update_garment_stage(
         resp.secure_token = updated_garment.qr_token.secure_token
     return resp
 
-@router.post("/{garment_id}/photos", response_model=GarmentPhotographResponse)
+@router.post("/{garment_id}/photos", response_model=GarmentPhotographResponse, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER]))])
 def add_garment_photo(
     garment_id: int,
     photo_url: str,
@@ -88,7 +89,7 @@ def add_garment_photo(
     db.refresh(photo)
     return photo
 
-@router.post("/{garment_id}/measurements", response_model=GarmentMeasurementResponse)
+@router.post("/{garment_id}/measurements", response_model=GarmentMeasurementResponse, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER]))])
 def save_garment_measurements(
     garment_id: int,
     payload: GarmentMeasurementCreate,

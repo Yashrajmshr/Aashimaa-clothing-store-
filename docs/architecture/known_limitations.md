@@ -1,7 +1,7 @@
 # AASHIMA ERP – Known Limitations & Pending External Integrations
 
 **Business Entity**: AASHIMA Women's World & AASHIMA Stitchers 'N' Drapers (581 Turab Nagar)  
-**System Status**: Production Ready Software Ecosystem  
+**System Status**: Not production ready; see `PROJECT_STATUS.md`
 
 ---
 
@@ -10,7 +10,7 @@
 ### 1.1 SMS & WhatsApp Gateways
 - **Interface Implemented**: Provider-independent `NotificationService` supporting Mock Driver, Twilio, Fast2SMS, and Gupshup.
 - **Production Prerequisite**: Requires actual API tokens (`SMS_API_KEY`, `WHATSAPP_API_KEY`) and Indian DLT regulatory registration with TRAI for bulk SMS sender ID (`AASHMA`).
-- **Development Fallback**: In `ENVIRONMENT=development`, all notifications automatically transition to `Delivered` and log complete payload content in `notification_logs` table with zero delivery failure.
+- **Current status**: Live SMS delivery requires provider credentials and was not verified. OTPs are no longer logged or included in returned WhatsApp links. Provider failure and rate-limit behavior still require production verification.
 
 ### 1.2 Physical Thermal Printer Hardware
 - **Interface Implemented**: Native browser ESC/POS print driver with exact monospaced character bounds (32 chars for 58mm, 48 chars for 80mm) and high-contrast Base64 QR code rendering.

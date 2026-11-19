@@ -1,9 +1,8 @@
-import os
 import json
 import secrets
 from datetime import datetime, timedelta
 from decimal import Decimal
-from backend.app.core.database import Base, engine, SessionLocal
+from backend.app.core.database import SessionLocal
 from backend.app.core.security import get_password_hash
 from backend.app.core.business_config import (
     DEFAULT_SERVICES,
@@ -12,6 +11,7 @@ from backend.app.core.business_config import (
     WorkflowStage,
     UserRole
 )
+from backend.app.core.config import settings
 from backend.app.models import (
     Role,
     Permission,
@@ -79,9 +79,10 @@ def purge_synthetic_data(db):
     db.commit()
     print("[Seed] All synthetic transactional and demo staff data successfully purged!")
 
-def run_seed(clean_synthetic=True):
+def run_seed(clean_synthetic=False):
+    if clean_synthetic and settings.ENVIRONMENT.lower() == "production":
+        raise RuntimeError("Synthetic-data cleanup is forbidden in production")
     print("[Seed] Initializing database tables...")
-    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
     try:
@@ -143,13 +144,18 @@ def run_seed(clean_synthetic=True):
 
         # 3. Seed Primary Owner Account Only (zero synthetic staff accounts)
         print("[Seed] Seeding Primary Owner Account...")
+        owner_password = settings.BOOTSTRAP_OWNER_PASSWORD
+        if settings.ENVIRONMENT.lower() == "production" and not owner_password:
+            existing_owner = db.query(User).filter(User.username == "owner").first()
+            if not existing_owner:
+                raise RuntimeError("Set BOOTSTRAP_OWNER_PASSWORD before creating the production owner")
         users_data = [
             {
                 "username": "owner",
                 "email": "owner@aashima.in",
-                "full_name": "AASHIMA Owner",
+                "full_name": "Aashima Singhal",
                 "phone": "9810244321",
-                "password": "Password@123",
+                "password": owner_password or "Password@123",
                 "role": UserRole.OWNER
             }
         ]

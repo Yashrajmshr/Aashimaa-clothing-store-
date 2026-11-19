@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
+from backend.app.api.deps import get_current_customer
 from backend.app.models.booking import Booking, Garment, OrderStatusHistory
 from backend.app.models.customer import Customer
 from backend.app.models.qr import GarmentQRToken
@@ -16,6 +17,7 @@ def track_order_public(
     token: Optional[str] = Query(None, description="Secure QR token or QR identifier"),
     booking_number: Optional[str] = Query(None, description="Booking # e.g. ASH-8842"),
     phone: Optional[str] = Query(None, description="Customer 10-digit mobile number"),
+    customer: Customer = Depends(get_current_customer),
     db: Session = Depends(get_db)
 ):
     """
@@ -30,33 +32,47 @@ def track_order_public(
         clean_token = token.strip()
         qr_obj = db.query(GarmentQRToken).filter(
             (GarmentQRToken.secure_token == clean_token) |
-            (GarmentQRToken.qr_code_identifier == clean_token) |
-            (GarmentQRToken.qr_code_identifier == f"QR-{clean_token}")
+            (GarmentQRToken.qr_code_identifier == clean_token),
+            GarmentQRToken.is_active == True
         ).first()
 
         if not qr_obj:
             raise HTTPException(status_code=404, detail="Garment QR token not found or invalid.")
 
-        target_garment = db.query(Garment).filter(Garment.id == qr_obj.garment_id).first()
+        target_garment = db.query(Garment).filter(
+            Garment.id == qr_obj.garment_id,
+            Garment.is_deleted == False
+        ).first()
         if target_garment:
-            target_booking = target_garment.booking
+            target_booking = db.query(Booking).filter(
+                Booking.id == target_garment.booking_id,
+                Booking.is_deleted == False
+            ).first()
+
+        if target_booking and target_booking.customer_id != customer.id:
+            raise HTTPException(status_code=404, detail="No active atelier booking found for the verified customer")
 
     if not target_booking and booking_number:
         raw_num = booking_number.strip().replace("#", "").upper()
         candidates = [raw_num, f"ASH-{raw_num}", f"ASH{raw_num}"]
         target_booking = db.query(Booking).filter(
             Booking.booking_number.in_(candidates),
+            Booking.customer_id == customer.id,
             Booking.is_deleted == False
         ).first()
 
         if not target_booking:
             target_booking = db.query(Booking).filter(
                 Booking.booking_number.ilike(f"%{raw_num}%"),
+                Booking.customer_id == customer.id,
                 Booking.is_deleted == False
             ).first()
 
-        if target_booking and target_booking.garments:
-            target_garment = target_booking.garments[0]
+        if target_booking:
+            target_garment = db.query(Garment).filter(
+                Garment.booking_id == target_booking.id,
+                Garment.is_deleted == False
+            ).first()
 
     # If still not found and phone provided, lookup latest active booking for this phone
     if not target_booking and phone:
@@ -67,13 +83,17 @@ def track_order_public(
                 .join(Customer)
                 .filter(
                     Customer.phone.endswith(clean_phone),
+                    Customer.id == customer.id,
                     Booking.is_deleted == False
                 )
                 .order_by(Booking.created_at.desc())
                 .first()
             )
-            if target_booking and target_booking.garments:
-                target_garment = target_booking.garments[0]
+            if target_booking:
+                target_garment = db.query(Garment).filter(
+                    Garment.booking_id == target_booking.id,
+                    Garment.is_deleted == False
+                ).first()
 
     if not target_booking:
         ref_text = booking_number or phone or token or "provided details"
@@ -147,6 +167,8 @@ def track_order_public(
     # Items breakdown
     items = []
     for g in target_booking.garments:
+        if g.is_deleted:
+            continue
         srv_names = ", ".join([s.service_name for s in g.services]) or "Bespoke Garment Care"
         items.append({
             "garment_code": g.garment_code,
@@ -158,7 +180,7 @@ def track_order_public(
         })
 
     invoice = db.query(Invoice).filter(Invoice.booking_id == target_booking.id).first()
-    invoice_url = f"/api/v1/billing/invoices/{invoice.id}/pdf" if invoice else None
+    invoice_url = f"/billing/invoices/{invoice.id}/customer-pdf" if invoice else None
 
     return {
         "booking_number": target_booking.booking_number,

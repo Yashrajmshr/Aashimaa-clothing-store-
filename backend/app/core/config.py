@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import List, Optional
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -9,6 +10,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "AASHIMA ERP"
     VERSION: str = "2.4.0"
     API_V1_STR: str = "/api/v1"
+    PUBLIC_BASE_URL: str = "http://localhost:8000"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
     # Business Identity
@@ -22,12 +24,13 @@ class Settings(BaseSettings):
     CURRENCY_SYMBOL: str = "₹"
 
     # Security & Auth
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "regal_atelier_super_secure_secret_key_turab_nagar_ghaziabad_2026")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "development-only-change-this-secret-before-deploying")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     OTP_EXPIRE_MINUTES: int = 10
-    DEFAULT_OTP_BYPASS: Optional[str] = os.getenv("DEFAULT_OTP_BYPASS", "123456")  # For testing/sandbox
+    DEFAULT_OTP_BYPASS: Optional[str] = os.getenv("DEFAULT_OTP_BYPASS")
+    BOOTSTRAP_OWNER_PASSWORD: Optional[str] = None
 
     # Database
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
@@ -51,7 +54,6 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:8000",
         "http://localhost:8080",
-        "*"
     ]
 
     # Storage paths
@@ -72,6 +74,35 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+
+    @model_validator(mode="after")
+    def validate_production_security(self):
+        if self.ENVIRONMENT.lower() == "production":
+            if not self.PUBLIC_BASE_URL.startswith("https://"):
+                raise ValueError("Production PUBLIC_BASE_URL must use HTTPS")
+            if len(self.SECRET_KEY) < 32 or self.SECRET_KEY in {
+                "development-only-change-this-secret-before-deploying",
+                "replace-with-a-unique-random-secret-of-at-least-32-characters",
+            }:
+                raise ValueError("Production requires a unique SECRET_KEY of at least 32 characters")
+            if self.DATABASE_URL.startswith("sqlite"):
+                raise ValueError("Production requires PostgreSQL; SQLite is not supported")
+            if self.POSTGRES_PASSWORD == "postgres":
+                raise ValueError("Production requires a unique PostgreSQL password")
+            if self.DEFAULT_OTP_BYPASS:
+                raise ValueError("DEFAULT_OTP_BYPASS must be unset in production")
+            provider = self.NOTIFICATION_PROVIDER.strip().lower()
+            if provider == "fast2sms" and not (self.FAST2SMS_API_KEY or self.SMS_API_KEY):
+                raise ValueError("Production Fast2SMS notifications require FAST2SMS_API_KEY or SMS_API_KEY")
+            if provider == "twilio" and not all((self.TWILIO_ACCOUNT_SID, self.TWILIO_AUTH_TOKEN, self.TWILIO_FROM_NUMBER)):
+                raise ValueError("Production Twilio notifications require account SID, auth token, and from number")
+            if provider not in {"fast2sms", "twilio"}:
+                raise ValueError("Production requires a supported real notification provider (fast2sms or twilio)")
+            if self.BOOTSTRAP_OWNER_PASSWORD and len(self.BOOTSTRAP_OWNER_PASSWORD) < 12:
+                raise ValueError("BOOTSTRAP_OWNER_PASSWORD must contain at least 12 characters")
+            if "*" in self.BACKEND_CORS_ORIGINS:
+                raise ValueError("Wildcard CORS origins are not allowed in production")
+        return self
 
 settings = Settings()
 

@@ -9,6 +9,7 @@ class CustomerPortal {
     constructor() {
         this.currentOrder = null;
         this.customerToken = localStorage.getItem('aashima_cust_token') || null;
+        this.pendingToken = null;
         this.init();
     }
 
@@ -19,6 +20,7 @@ class CustomerPortal {
         const bookingParam = urlParams.get('booking');
 
         if (tokenParam) {
+            this.pendingToken = tokenParam;
             await this.loadOrderTracking(tokenParam, null);
         } else if (bookingParam) {
             await this.loadOrderTracking(null, bookingParam);
@@ -43,7 +45,9 @@ class CustomerPortal {
             if (bookingNumber) params.append('booking_number', bookingNumber);
             if (phone) params.append('phone', phone);
 
-            const res = await fetch(`${API_BASE}/public/track?${params.toString()}`);
+            const res = await fetch(`${API_BASE}/public/track?${params.toString()}`, {
+                headers: this.customerToken ? { Authorization: `Bearer ${this.customerToken}` } : {}
+            });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error(err.detail || 'Order tracking not found.');
@@ -131,13 +135,13 @@ class CustomerPortal {
                 <div class="text-center">
                     <span class="material-symbols-outlined text-[36px] text-secondary">verified_user</span>
                     <h2 class="font-serif text-2xl font-bold text-primary mt-1">Verify Mobile OTP</h2>
-                    <p class="text-xs text-on-surface-variant">A 6-digit verification code has been dispatched to <b class="text-on-surface font-mono">${maskedPhone}</b></p>
+                    <p class="text-xs text-on-surface-variant">If this number is registered, a code will be sent to <b class="text-on-surface font-mono">${maskedPhone}</b></p>
                 </div>
 
                 <!-- Delivery Notification Status -->
                 <div class="p-3 rounded-xl ${smsDelivered ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-primary-container/10 border border-primary-container/30 text-primary'} text-xs flex items-center gap-2">
-                    <span class="material-symbols-outlined text-sm">${smsDelivered ? 'check_circle' : 'sms'}</span>
-                    <span class="flex-1">${statusMsg || (smsDelivered ? 'Live SMS sent via telecom carrier.' : 'Verification code dispatched to your phone.')}</span>
+                    <span class="material-symbols-outlined text-sm">${smsDelivered ? 'check_circle' : 'info'}</span>
+                    <span class="flex-1">${statusMsg || (smsDelivered ? 'Verification code sent by SMS.' : 'SMS delivery is unavailable. Please contact the atelier for help.')}</span>
                 </div>
 
                 ${whatsappUrl ? `
@@ -194,7 +198,7 @@ class CustomerPortal {
                 }
                 this.customerToken = authData.access_token;
                 localStorage.setItem('aashima_cust_token', authData.access_token);
-                await this.loadOrderTracking(null, bookingNumber, phone);
+                await this.loadOrderTracking(this.pendingToken, bookingNumber, phone);
             } catch (err) {
                 alert(err.message || 'OTP verification failed');
                 btn.innerHTML = `<span>Verify & Track Garment</span><span class="material-symbols-outlined text-[18px]">arrow_forward</span>`;
@@ -328,10 +332,10 @@ class CustomerPortal {
                     </div>
 
                     ${order.billing.invoice_pdf_url ? `
-                        <a href="${order.billing.invoice_pdf_url}" target="_blank" class="w-full py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-primary font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-outline-variant/40 shadow-sm">
+                        <button type="button" data-invoice-url="${order.billing.invoice_pdf_url}" class="w-full py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-primary font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-outline-variant/40 shadow-sm">
                             <span class="material-symbols-outlined text-[16px]">download</span>
                             <span>Download Official Tax Invoice (PDF)</span>
-                        </a>
+                        </button>
                     ` : ''}
                 </div>
 
@@ -354,6 +358,28 @@ class CustomerPortal {
                 </div>
             </div>
         `;
+
+        const invoiceButton = container.querySelector('[data-invoice-url]');
+        invoiceButton?.addEventListener('click', () => this.downloadInvoice(invoiceButton.dataset.invoiceUrl));
+    }
+
+    async downloadInvoice(invoicePath) {
+        try {
+            const response = await fetch(`${API_BASE}${invoicePath}`, {
+                headers: { Authorization: `Bearer ${this.customerToken}` }
+            });
+            if (!response.ok) throw new Error('Invoice download failed. Please sign in again.');
+            const blobUrl = URL.createObjectURL(await response.blob());
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = `AASHIMA-${this.currentOrder.booking_number}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(blobUrl);
+        } catch (error) {
+            alert(error.message || 'Invoice download failed.');
+        }
     }
 }
 

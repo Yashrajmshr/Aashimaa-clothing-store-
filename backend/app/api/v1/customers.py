@@ -11,7 +11,7 @@ from backend.app.core.business_config import UserRole
 
 router = APIRouter(prefix="/customers", tags=["Customer Registry"])
 
-@router.get("", response_model=List[CustomerResponse])
+@router.get("", response_model=List[CustomerResponse], dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER, UserRole.ACCOUNTANT]))])
 def list_customers(
     search: Optional[str] = Query(None, description="Search by name, phone, or customer code"),
     patron_tier: Optional[str] = Query(None),
@@ -43,7 +43,7 @@ def list_customers(
     customers = query.order_by(Customer.created_at.desc()).offset(skip).limit(limit).all()
     return customers
 
-@router.get("/{customer_id}", response_model=CustomerResponse)
+@router.get("/{customer_id}", response_model=CustomerResponse, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER, UserRole.ACCOUNTANT]))])
 def get_customer(
     customer_id: int,
     db: Session = Depends(get_db),
@@ -54,7 +54,7 @@ def get_customer(
         raise HTTPException(status_code=404, detail="Customer not found")
     return customer
 
-@router.post("", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER]))])
 def create_customer(
     payload: CustomerCreate,
     db: Session = Depends(get_db),
@@ -98,7 +98,7 @@ def create_customer(
     db.refresh(customer)
     return customer
 
-@router.put("/{customer_id}", response_model=CustomerResponse)
+@router.put("/{customer_id}", response_model=CustomerResponse, dependencies=[Depends(require_roles([UserRole.STAFF, UserRole.MANAGER]))])
 def update_customer(
     customer_id: int,
     payload: CustomerUpdate,
@@ -124,7 +124,7 @@ def update_customer(
     db.refresh(customer)
     return customer
 
-@router.delete("/{customer_id}", status_code=status.HTTP_200_OK)
+@router.delete("/{customer_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_roles([UserRole.MANAGER]))])
 def delete_customer(
     customer_id: int,
     db: Session = Depends(get_db),

@@ -1,7 +1,7 @@
 # AASHIMA ERP – Database Architecture & Data Dictionary
 
 **Database Management System**: PostgreSQL 16 (Compatible with SQLite for test environments)  
-**Schema Definition**: 33 Normalized Tables  
+**Schema Definition**: 37 Modeled Tables
 **Financial Type Standard**: `NUMERIC(12, 2)` / `DECIMAL(10, 2)`  
 **Audit Standard**: Created/Updated Timestamps, Soft-Deletions, User ID Traceability  
 
@@ -50,7 +50,7 @@ erDiagram
 
 ---
 
-## 2. Comprehensive Data Dictionary (All 33 Tables)
+## 2. Comprehensive Data Dictionary (All 37 Tables)
 
 ### Group 1: Authentication & Access Control
 | Table Name | Primary Key | Key Foreign Keys | Purpose & Indices |
